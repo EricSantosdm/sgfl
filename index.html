@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema Financeiro - Loja Maçônica</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    
+    <style>
+        body { background-color: #f0f2f5; }
+        .navbar { box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+        .stat-card { background-color: white; border-radius: 12px; padding: 20px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-5px); }
+        .stat-number { font-size: 2.2rem; font-weight: bold; }
+        .transaction-item { border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+        .transaction-item-clickable { cursor: pointer; }
+        #adminLoginSection { max-width: 400px; }
+        .add-transaction-card { cursor: pointer; border: 2px dashed #adb5bd; transition: all 0.3s; background-color: #f8f9fa; }
+        .add-transaction-card:hover { border-color: #0d6efd; background-color: #e9ecef; }
+        .add-transaction-card .bi-plus-circle-dotted { transition: transform 0.3s; }
+        .add-transaction-card:hover .bi-plus-circle-dotted { transform: scale(1.1); }
+        .admin-only { display: none; }
+        .nav-tabs .nav-link { cursor: pointer; }
+
+        /* Estilos para Tabela de Mensalidades */
+        .dues-table .badge, .dues-table .btn { font-size: 0.8rem; padding: 0.4em 0.6em; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="#"><i class="bi bi-wallet2"></i> Financeiro Maçônico</a>
+            <div id="nav-content" class="d-flex align-items-center">
+                <span id="syncStatus" class="badge bg-secondary me-3" title="Status da Conexão com a Nuvem">⚫</span>
+                <span id="adminUser" class="navbar-text me-3 admin-only"></span>
+                <button id="logoutButton" class="btn btn-sm btn-outline-light admin-only" onclick="logoutAdmin()">Sair</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div id="adminLoginSection" class="mx-auto card p-4 text-center">
+            <h3 class="mb-3">Acesso Administrativo</h3>
+            <div class="form-floating mb-3">
+                <input type="text" class="form-control" id="adminName" placeholder="Nome">
+                <label for="adminName">Nome</label>
+            </div>
+            <div class="form-floating mb-3">
+                <input type="password" class="form-control" id="adminPassword" placeholder="Senha">
+                <label for="adminPassword">Senha de Administrador</label>
+            </div>
+            <button class="btn btn-primary w-100" onclick="handleAdminLogin()">Entrar</button>
+            <div id="loginError" class="text-danger mt-2"></div>
+        </div>
+
+        <div id="mainContent" style="display: none;">
+            
+            <div class="admin-only my-4 p-4 bg-dark text-white rounded shadow-sm">
+                <h3 class="mb-3"><i class="bi bi-shield-lock-fill"></i> Painel de Administrador</h3>
+                <div class="d-flex flex-wrap gap-2">
+                    <button onclick="clearCloudData()" class="btn btn-danger"><i class="bi bi-trash3-fill"></i> Limpar Dados</button>
+                    <button onclick="exportBackup()" class="btn btn-info"><i class="bi bi-download"></i> Exportar Backup</button>
+                    <button onclick="importFromJSON()" class="btn btn-warning"><i class="bi bi-upload"></i> Importar Backup</button>
+                </div>
+            </div>
+
+            <ul class="nav nav-tabs mb-3">
+                <li class="nav-item"><a class="nav-link active" onclick="showTab('financasTab')"><i class="bi bi-cash-coin me-1"></i> Finanças</a></li>
+                <li class="nav-item"><a class="nav-link" onclick="showTab('membrosTab')"><i class="bi bi-people-fill me-1"></i> Membros</a></li>
+                <li class="nav-item"><a class="nav-link" onclick="showTab('duesTab')"><i class="bi bi-calendar-check me-1"></i> Mensalidades</a></li>
+            </ul>
+
+            <div id="financasTab">
+                <div class="row g-4 my-4">
+                    <div class="col-lg-3 col-md-6"><div class="stat-card"><div class="stat-number text-primary" id="balanceTesouraria">R$ 0,00</div><div>Saldo Tesouraria</div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card"><div class="stat-number text-info" id="balanceHospitalaria">R$ 0,00</div><div>Saldo Hospitalaria</div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card"><div class="stat-number text-success" id="monthIncome">R$ 0,00</div><div>Entradas (Mês)</div></div></div>
+                    <div class="col-lg-3 col-md-6"><div class="stat-card"><div class="stat-number text-danger" id="monthOutcome">R$ 0,00</div><div>Saídas (Mês)</div></div></div>
+                </div>
+                
+                <div class="card p-3 mb-4 shadow-sm">
+                    <h5 class="mb-3">Filtros e Relatórios</h5>
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-3"><select id="monthFilter" class="form-select"><option value="all">Todos os Meses</option></select></div>
+                        <div class="col-md-3"><select id="typeFilter" class="form-select"><option value="all">Todas as Transações</option><option value="entrada">Apenas Entradas</option><option value="saida">Apenas Saídas</option></select></div>
+                        <div class="col-md-3"><select id="categoryFilter" class="form-select"><option value="all">Todas as Categorias</option></select></div>
+                        <div class="col-md-3"><button class="btn btn-secondary w-100" data-bs-toggle="modal" data-bs-target="#reportConfigModal"><i class="bi bi-file-earmark-text me-1"></i> Gerar Relatório</button></div>
+                    </div>
+                </div>
+                
+                <div class="row g-4">
+                    <div class="col-lg-12">
+                        <h3 class="mb-3">Transações Recentes</h3>
+                        <div class="d-grid gap-2" id="transactionList"></div>
+                    </div>
+                    <div class="col-lg-6">
+                         <h3 class="mb-3">Despesas por Categoria (Mês)</h3>
+                         <div class="card p-3 shadow-sm"><canvas id="categoryChart"></canvas></div>
+                    </div>
+                     <div class="col-lg-6">
+                         <h3 class="mb-3">Entradas vs. Saídas (Mensal)</h3>
+                         <div class="card p-3 shadow-sm"><canvas id="incomeVsExpenseChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="membrosTab" style="display: none;">
+                <div class="card shadow-sm">
+                    <div class="card-header p-3 d-flex justify-content-between align-items-center">
+                        <h3 class="mb-0">Quadro de Membros</h3>
+                        <div class="d-flex flex-wrap gap-2 admin-only">
+                            <button class="btn btn-success" onclick="importMembers()"><i class="bi bi-file-earmark-spreadsheet me-1"></i> Importar (CSV)</button>
+                            <button class="btn btn-info" onclick="exportMembersCSV()"><i class="bi bi-download me-1"></i> Exportar (CSV)</button>
+                            <button class="btn btn-primary" onclick="openMemberModal()"><i class="bi bi-person-plus-fill me-1"></i> Adicionar Membro</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>ID/Matrícula</th>
+                                        <th>Nome</th>
+                                        <th>Status</th>
+                                        <th class="admin-only">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="memberListTable">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="duesTab" style="display: none;">
+                <div class="card shadow-sm">
+                    <div class="card-header p-3">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                            <h3 class="mb-0">Controle de Mensalidades</h3>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="admin-only" style="white-space: nowrap;">Valor Padrão: <strong id="duesValueDisplay">R$ 0,00</strong></span>
+                                <button class="btn btn-sm btn-outline-secondary admin-only" onclick="openDuesConfigModal()"><i class="bi bi-gear"></i> Alterar</button>
+                                <select id="duesYearFilter" class="form-select form-select-sm" style="width: 120px;" onchange="renderDuesManagement()"></select>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-search"></i></span>
+                            <input type="text" id="duesMemberSearch" class="form-control" placeholder="Buscar membro por nome ou ID..." onkeyup="renderDuesManagement()">
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover text-center align-middle caption-top dues-table">
+                                <caption><i class="bi bi-info-circle-fill"></i> Membros com status "Remido" são isentos de pagamento.</caption>
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 20%; text-align: left; padding-left: 10px;">Membro</th>
+                                        <th>Jan</th> <th>Fev</th> <th>Mar</th> <th>Abr</th> <th>Mai</th> <th>Jun</th>
+                                        <th>Jul</th> <th>Ago</th> <th>Set</th> <th>Out</th> <th>Nov</th> <th>Dez</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="duesTableBody">
+                                    </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast-container position-fixed bottom-0 end-0 p-3"><div id="messageToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true"><div class="toast-header"><strong class="me-auto" id="toastTitle"></strong><button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button></div><div class="toast-body" id="toastBody"></div></div></div>
+
+    <div class="modal fade" id="addTransactionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nova Transação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="transactionForm"><div class="mb-3"><label for="description" class="form-label">Descrição</label><input type="text" class="form-control" id="description" required></div><div class="row"><div class="col-md-6 mb-3"><label for="amount" class="form-label">Valor (R$)</label><input type="number" step="0.01" class="form-control" id="amount" required placeholder="150.50"></div><div class="col-md-6 mb-3"><label for="date" class="form-label">Data</label><input type="date" class="form-control" id="date" required></div></div><div class="mb-3"><label class="form-label">Tipo</label><div><div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="type" id="typeEntrada" value="entrada" checked><label class="form-check-label" for="typeEntrada">Entrada</label></div><div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="type" id="typeSaida" value="saida"><label class="form-check-label" for="typeSaida">Saída</label></div></div></div><div class="row">
+        <div class="col-md-6 mb-3"><label for="category" class="form-label">Categoria</label><select id="category" class="form-select" required></select></div>
+        <div class="col-md-6 mb-3"><label for="transactionMember" class="form-label">Membro (Opcional)</label>
+            <input class="form-control" list="memberDatalist" id="transactionMember" placeholder="Digite para buscar...">
+            <datalist id="memberDatalist"></datalist>
+        </div>
+    </div><div class="form-text mb-3">O fundo (Tesouraria/Hospitalaria) será definido pela Categoria.</div><button type="submit" class="btn btn-primary mt-3 w-100"><i class="bi bi-check-circle-fill"></i> Salvar Transação</button></form></div></div></div></div>
+    
+    <div class="modal fade" id="editTransactionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-pencil-square"></i> Editar Transação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="editTransactionForm"><input type="hidden" id="editTransactionId"><div class="mb-3"><label for="editDescription" class="form-label">Descrição</label><input type="text" class="form-control" id="editDescription" required></div><div class="row"><div class="col-md-6 mb-3"><label for="editAmount" class="form-label">Valor (R$)</label><input type="number" step="0.01" class="form-control" id="editAmount" required></div><div class="col-md-6 mb-3"><label for="editDate" class="form-label">Data</label><input type="date" class="form-control" id="editDate" required></div></div><div class="mb-3"><label class="form-label">Tipo</label><div><div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="editType" id="editTypeEntrada" value="entrada"><label class="form-check-label" for="editTypeEntrada">Entrada</label></div><div class="form-check form-check-inline"><input class="form-check-input" type="radio" name="editType" id="editTypeSaida" value="saida"><label class="form-check-label" for="editTypeSaida">Saída</label></div></div></div><div class="row">
+        <div class="col-md-6 mb-3"><label for="editCategory" class="form-label">Categoria</label><select id="editCategory" class="form-select" required></select></div>
+        <div class="col-md-6 mb-3"><label for="editTransactionMember" class="form-label">Membro (Opcional)</label>
+            <input class="form-control" list="memberDatalistEdit" id="editTransactionMember" placeholder="Digite para buscar...">
+            <datalist id="memberDatalistEdit"></datalist>
+        </div>
+    </div><div class="form-text mb-3">O fundo (Tesouraria/Hospitalaria) será definido pela Categoria.</div><button type="submit" class="btn btn-primary mt-3 w-100"><i class="bi bi-check-circle-fill"></i> Salvar Alterações</button></form></div></div></div></div>
+
+    <div class="modal fade" id="viewTransactionModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-card-text"></i> Detalhes da Transação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><ul class="list-group list-group-flush"><li class="list-group-item d-flex justify-content-between"><strong>Descrição:</strong> <span id="viewDescription"></span></li><li class="list-group-item d-flex justify-content-between"><strong>Valor:</strong> <span id="viewAmount"></span></li><li class="list-group-item d-flex justify-content-between"><strong>Data:</strong> <span id="viewDate"></span></li><li class="list-group-item d-flex justify-content-between"><strong>Tipo:</strong> <span id="viewType"></span></li><li class="list-group-item d-flex justify-content-between"><strong>Fundo:</strong> <span id="viewFundo"></span></li><li class="list-group-item d-flex justify-content-between"><strong>Categoria:</strong> <span id="viewCategory"></span></li><li class="list-group-item d-flex justify-content-between"><strong>Membro:</strong> <span id="viewMember"></span></li><li class="list-group-item d-flex justify-content-between"><strong>Registrado por:</strong> <span id="viewCreatedBy"></span></li></ul></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
+    
+    <div class="modal fade" id="reportConfigModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-calendar-range"></i> Gerar Relatório</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="row"><div class="col-md-6 mb-3"><label for="reportStartDate" class="form-label">Data de Início</label><input type="date" class="form-control" id="reportStartDate" required></div><div class="col-md-6 mb-3"><label for="reportEndDate" class="form-label">Data de Fim</label><input type="date" class="form-control" id="reportEndDate" required></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" onclick="generateReport()"><i class="bi bi-file-earmark-check"></i> Gerar</button></div></div></div></div>
+    
+    <div class="modal fade" id="reportModal" tabindex="-1"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-file-earmark-medical"></i> Relatório Financeiro</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="reportPrintArea"></div><div class="modal-footer"><button type="button" class="btn btn-info" onclick="printReport()"><i class="bi bi-printer"></i> Imprimir</button><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button></div></div></div></div>
+
+    <div class="modal fade" id="memberModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="memberModalTitle"><i class="bi bi-person-plus"></i> Novo Membro</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="memberForm"><input type="hidden" id="editMemberInternalId"><div class="mb-3"><label for="memberId" class="form-label">ID / Matrícula</label><input type="text" class="form-control" id="memberId" required></div><div class="mb-3"><label for="memberName" class="form-label">Nome Completo</label><input type="text" class="form-control" id="memberName" required></div><div class="mb-3"><label for="memberStatus" class="form-label">Status</label><select id="memberStatus" class="form-select" required><option value="Regular">Regular</option><option value="Afastado">Afastado</option><option value="Remido">Remido</option></select></div><button type="submit" class="btn btn-primary mt-3 w-100"><i class="bi bi-check-circle-fill"></i> Salvar Membro</button></form></div></div></div></div>
+    
+    <div class="modal fade" id="duesConfigModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered" style="max-width: 400px;"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bi bi-currency-dollar"></i> Valor da Mensalidade</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="duesConfigForm"><div class="mb-3"><label for="duesValue" class="form-label">Valor Padrão (R$)</label><input type="number" step="0.01" class="form-control" id="duesValue" required placeholder="100.00"></div>
+    <button type="submit" class="btn btn-primary w-100">Salvar Valor</button>
+    </form></div></div></div></div>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // =============================================================================
+        // CONFIGURAÇÃO
+        // =============================================================================
+        const FIXED_API_KEY = "$2a$10$i/Rfjq9lSvlDpjwoYZgsXOc3/phV4fAlEaZozBAa2q1mo9FMyGBpK";
+        const FIXED_BIN_ID = "68f7b765ae596e708f2209bc";
+        const ADMIN_PASSWORD_HASH = "2dccd9dfb91370d0ad4aa314ed1ad9dfd0e361c33a51781d52bc018abe45bedf";
+
+        // =============================================================================
+        // VARIÁVEIS GLOBAIS
+        // =============================================================================
+        let transactions = [];
+        let members = [];
+        let dues = {}; // Armazena o status das mensalidades
+        let duesConfig = { valor: 100.00 }; // Valor padrão da mensalidade
+        let isAdmin = false;
+        let adminName = '';
+        let modalInstances = {};
+        let charts = { category: null, incomeExpense: null };
+
+        // Categorias atualizadas para Loja Maçônica
+        const incomeCategories = ["Mensalidades", "Taxa de Iniciação", "Eventos Beneficentes", "Doações", "Tronco da Beneficencia", "Venda de Itens", "Outras Entradas"];
+        const expenseCategories = ["Aluguel/Manutenção Templo", "Taxas (Potência)", "Eventos/Ágapes", "Material Ritualístico", "Beneficência", "Impostos/Taxas", "Doação às Paramaçônicas", "Outras Saídas"];
+        
+        // Categorias que movem o fundo da Hospitalaria
+        const HOSPITALARIA_CATEGORIES = ["Eventos Beneficentes", "Doações", "Beneficência", "Tronco da Beneficencia"];
+
+        // =============================================================================
+        // INICIALIZAÇÃO E AUTENTICAÇÃO
+        // =============================================================================
+        document.addEventListener('DOMContentLoaded', init);
+
+        async function init() {
+            // Instanciar todos os modais
+            ['addTransactionModal', 'editTransactionModal', 'viewTransactionModal', 'reportConfigModal', 'reportModal', 'memberModal', 'duesConfigModal'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) modalInstances[id] = new bootstrap.Modal(el);
+            });
+
+            if (sessionStorage.getItem('isAdmin') === 'true') {
+                adminName = sessionStorage.getItem('adminName') || 'Admin';
+                showMainContent(true);
+            } else {
+                showMainContent(false);
+            }
+            
+            await fetchCloudData();
+            setupEventListeners();
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date').value = today;
+            document.getElementById('reportEndDate').value = today;
+            updateCategoryOptions('add');
+        }
+
+        async function sha256(message) {
+            const msgBuffer = new TextEncoder().encode(message);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        
+        function setupEventListeners() {
+            document.getElementById('transactionForm').addEventListener('submit', handleAddFormSubmit);
+            document.getElementById('editTransactionForm').addEventListener('submit', handleEditFormSubmit);
+            document.getElementById('memberForm').addEventListener('submit', handleMemberFormSubmit);
+            document.getElementById('duesConfigForm').addEventListener('submit', handleDuesConfigSubmit);
+
+            ['monthFilter', 'typeFilter', 'categoryFilter'].forEach(id => document.getElementById(id).addEventListener('change', renderUI));
+            
+            document.querySelectorAll('input[name="type"]').forEach(radio => radio.addEventListener('change', () => updateCategoryOptions('add')));
+            document.querySelectorAll('input[name="editType"]').forEach(radio => radio.addEventListener('change', () => updateCategoryOptions('edit')));
+        }
+        
+        async function handleAdminLogin() {
+            const nameInput = document.getElementById("adminName"),
+                password = document.getElementById("adminPassword").value,
+                loginError = document.getElementById("loginError");
+            if (!nameInput.value.trim()) return void(loginError.textContent = "Por favor, insira seu nome.");
+            
+            const passwordHash = await sha256(password);
+            passwordHash === ADMIN_PASSWORD_HASH ? (sessionStorage.setItem("isAdmin", "true"), sessionStorage.setItem("adminName", nameInput.value.trim()), adminName = nameInput.value.trim(), showMainContent(!0), showMessage("Sucesso!", `Bem-vindo(a), ${adminName}!`, "success"), loginError.textContent = "", nameInput.value = "", document.getElementById("adminPassword").value = "") : loginError.textContent = "Senha incorreta."
+        }
+
+        function logoutAdmin() {
+            sessionStorage.removeItem("isAdmin"), sessionStorage.removeItem("adminName"), adminName = "", showMainContent(!1), showMessage("Logout", "Você saiu do modo administrador.", "info")
+        }
+
+        function showMainContent(adminStatus) {
+            isAdmin = adminStatus;
+            document.getElementById("mainContent").style.display = "block";
+            document.getElementById("adminLoginSection").style.display = isAdmin ? "none" : "block";
+            
+            document.querySelectorAll(".admin-only").forEach(el => {
+                if (el.tagName === 'TH' || el.tagName === 'TD') {
+                    el.style.display = isAdmin ? "table-cell" : "none";
+                } else {
+                    el.style.display = isAdmin ? "" : "none";
+                }
+            });
+
+            const adminUserEl = document.getElementById("adminUser");
+            isAdmin ? adminUserEl.innerHTML = `<i class="bi bi-person-circle me-1"></i> ${adminName}` : adminUserEl.textContent = "";
+            
+            if (transactions.length > 0 || members.length > 0) {
+                renderUI();
+            }
+        }
+
+        // =============================================================================
+        // NAVEGAÇÃO EM ABAS
+        // =============================================================================
+        function showTab(tabId) {
+            ['financasTab', 'membrosTab', 'duesTab'].forEach(id => {
+                document.getElementById(id).style.display = (id === tabId) ? 'block' : 'none';
+            });
+            document.querySelectorAll('.nav-tabs .nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Renderiza o conteúdo da aba específica
+            if (tabId === 'duesTab') {
+                renderDuesManagement();
+            }
+        }
+
+        // =============================================================================
+        // RENDERIZAÇÃO DA UI GERAL
+        // =============================================================================
+        function renderUI() {
+            // Finanças
+            populateFilters();
+            const filtered = getFilteredTransactions();
+            updateDashboard();
+            displayTransactions(filtered);
+            renderCategoryChart();
+            renderIncomeVsExpenseChart();
+            
+            // Membros
+            renderMemberList();
+            populateMemberSearchList(); 
+
+            // Mensalidades (renderiza se estiver visível)
+            renderDuesManagement();
+        }
+
+        function getFilteredTransactions() {
+            const month = document.getElementById("monthFilter").value,
+                type = document.getElementById("typeFilter").value,
+                category = document.getElementById("categoryFilter").value;
+            return transactions.filter(t => {
+                const transactionMonth = t.date.substring(0, 7),
+                    monthMatch = "all" === month || transactionMonth === month,
+                    typeMatch = "all" === type || t.type === type,
+                    categoryMatch = "all" === category || t.category === category;
+                return monthMatch && typeMatch && categoryMatch
+            })
+        }
+
+        function displayTransactions(filtered) {
+            const listEl = document.getElementById('transactionList');
+            listEl.innerHTML = '';
+
+            if (isAdmin) {
+                listEl.insertAdjacentHTML('beforeend', `<button class="btn btn-outline-secondary btn-lg add-transaction-card" data-bs-toggle="modal" data-bs-target="#addTransactionModal"><i class="bi bi-plus-circle-dotted me-2"></i> Nova Transação</button>`);
+            }
+
+            if(filtered.length === 0 && listEl.children.length <= 1){
+                listEl.insertAdjacentHTML('beforeend', '<p class="text-center text-muted">Nenhuma transação encontrada.</p>');
+                return;
+            }
+
+            filtered.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(t => {
+                const isIncome = t.type === 'entrada';
+                const member = members.find(m => m.internalId === t.memberId);
+                const memberName = member ? member.name : '';
+                
+                const authorInfo = t.createdBy ? ` &middot; ${t.createdBy}` : '';
+                const memberInfo = memberName ? ` &middot; <i class="bi bi-person"></i> ${memberName}` : '';
+                const fundoInfo = t.fundo === 'hospitalaria' ? ' &middot; <span class="text-info">Hospitalaria</span>' : '';
+
+                const itemHTML = `
+                    <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center transaction-item">
+                        <div class="flex-grow-1 transaction-item-clickable" onclick="openViewModal('${t.id}')">
+                            <div class="d-flex align-items-center">
+                                <i class="bi ${isIncome ? 'bi-arrow-up-circle text-success' : 'bi-arrow-down-circle text-danger'}" style="font-size: 1.5rem;"></i>
+                                <div class="ms-3">
+                                    <h6 class="mb-0">${t.description}</h6>
+                                    <small class="text-muted">${t.category} - ${formatDate(t.date)}${fundoInfo}${memberInfo}${authorInfo}</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center ps-3">
+                            <span class="fw-bold ${isIncome ? 'text-success' : 'text-danger'} me-3">${formatCurrency(t.amount)}</span>
+                            ${isAdmin ? `
+                                <button onclick="openEditModal(event, '${t.id}')" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="bi bi-pencil-square"></i></button>
+                                <button onclick="deleteTransaction(event, '${t.id}')" class="btn btn-sm btn-outline-danger" title="Excluir"><i class="bi bi-trash"></i></button>
+                            ` : ''}
+                        </div>
+                    </div>`;
+                listEl.insertAdjacentHTML('beforeend', itemHTML);
+            });
+        }
+
+        // =============================================================================
+        // LÓGICA DE TRANSAÇÕES (Adicionar, Editar, Excluir)
+        // =============================================================================
+        
+        // Define o fundo com base na categoria
+        function getFundoFromCategory(category) {
+            return HOSPITALARIA_CATEGORIES.includes(category) ? 'hospitalaria' : 'tesouraria';
+        }
+
+        function getMemberIdFromInput(inputFieldId) {
+            const inputValue = document.getElementById(inputFieldId).value;
+            if (!inputValue) return ""; 
+            
+            const member = members.find(m => `${m.name} (${m.id})` === inputValue);
+            return member ? member.internalId : "";
+        }
+
+        async function handleAddFormSubmit(e) {
+            e.preventDefault();
+            const category = document.getElementById('category').value;
+            const memberId = getMemberIdFromInput('transactionMember');
+            
+            const newTransaction = {
+                id: Date.now().toString(),
+                description: document.getElementById('description').value,
+                amount: parseFloat(document.getElementById('amount').value),
+                date: document.getElementById('date').value,
+                type: document.querySelector('input[name="type"]:checked').value,
+                category: category,
+                fundo: getFundoFromCategory(category),
+                memberId: memberId,
+                createdBy: adminName
+            };
+            
+            transactions.push(newTransaction);
+            await persistAndRefresh('Transação salva na nuvem!');
+            
+            document.getElementById('transactionForm').reset();
+            document.getElementById('date').valueAsDate = new Date();
+            updateCategoryOptions('add');
+            modalInstances.addTransactionModal.hide();
+        }
+
+        function openEditModal(event, id) {
+            event.stopPropagation();
+            const t = transactions.find(t => t.id === id);
+            if (!t) return;
+            
+            document.getElementById('editTransactionId').value = t.id;
+            document.getElementById('editDescription').value = t.description;
+            document.getElementById('editAmount').value = t.amount;
+            document.getElementById('editDate').value = t.date;
+            document.querySelector(`input[name="editType"][value="${t.type}"]`).checked = true;
+            
+            updateCategoryOptions('edit', t.type);
+            document.getElementById('editCategory').value = t.category;
+            
+            populateMemberSearchList();
+            const member = members.find(m => m.internalId === t.memberId);
+            document.getElementById('editTransactionMember').value = member ? `${member.name} (${member.id})` : "";
+
+            modalInstances.editTransactionModal.show();
+        }
+
+        async function handleEditFormSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById('editTransactionId').value;
+            const memberId = getMemberIdFromInput('editTransactionMember');
+            
+            transactions = transactions.map(t => {
+                if (t.id === id) {
+                    const category = document.getElementById('editCategory').value;
+                    return {
+                        ...t,
+                        description: document.getElementById('editDescription').value,
+                        amount: parseFloat(document.getElementById('editAmount').value),
+                        date: document.getElementById('editDate').value,
+                        type: document.querySelector('input[name="editType"]:checked').value,
+                        category: category,
+                        fundo: getFundoFromCategory(category),
+                        memberId: memberId
+                    };
+                }
+                return t;
+            });
+
+            await persistAndRefresh('Transação atualizada com sucesso!');
+            modalInstances.editTransactionModal.hide();
+        }
+
+        async function deleteTransaction(event, id) {
+            event.stopPropagation();
+            if (!isAdmin || !confirm('Excluir esta transação permanentemente?')) return;
+            transactions = transactions.filter(t => t.id !== id);
+            await persistAndRefresh('Transação excluída da nuvem.');
+        }
+
+        function openViewModal(id) {
+            const t = transactions.find(t => t.id === id);
+            if (!t) return;
+
+            const member = members.find(m => m.internalId === t.memberId);
+            const memberName = member ? member.name : 'Nenhum / Geral';
+
+            document.getElementById('viewDescription').textContent = t.description;
+            document.getElementById('viewAmount').textContent = formatCurrency(t.amount);
+            document.getElementById('viewDate').textContent = formatDate(t.date);
+            document.getElementById('viewType').innerHTML = t.type === 'entrada' ? '<span class="badge bg-success">Entrada</span>' : '<span class="badge bg-danger">Saída</span>';
+            document.getElementById('viewFundo').innerHTML = t.fundo === 'hospitalaria' ? '<span class="badge bg-info">Hospitalaria</span>' : '<span class="badge bg-primary">Tesouraria</span>';
+            document.getElementById('viewCategory').textContent = t.category;
+            document.getElementById('viewMember').textContent = memberName;
+            document.getElementById('viewCreatedBy').textContent = t.createdBy || 'Não informado';
+
+            modalInstances.viewTransactionModal.show();
+        }
+
+        // =============================================================================
+        // LÓGICA DE MEMBROS (CRUD)
+        // =============================================================================
+        
+        function renderMemberList() {
+            const tableBody = document.getElementById('memberListTable');
+            tableBody.innerHTML = '';
+            
+            if (members.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Nenhum membro cadastrado.</td></tr>';
+                return;
+            }
+
+            const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+
+            sortedMembers.forEach(m => {
+                let statusClass = '';
+                switch(m.status) {
+                    case 'Regular': statusClass = 'text-success'; break;
+                    case 'Afastado': statusClass = 'text-warning'; break;
+                    case 'Remido': statusClass = 'text-info'; break;
+                }
+
+                const row = `
+                    <tr>
+                        <td>${m.id}</td>
+                        <td>${m.name}</td>
+                        <td><strong class="${statusClass}">${m.status}</strong></td>
+                        <td class="admin-only">
+                            <button onclick="openMemberModal('${m.internalId}')" class="btn btn-sm btn-outline-primary me-1" title="Editar"><i class="bi bi-pencil-square"></i></button>
+                            <button onclick="deleteMember('${m.internalId}')" class="btn btn-sm btn-outline-danger" title="Excluir"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+                tableBody.insertAdjacentHTML('beforeend', row);
+            });
+
+            document.querySelectorAll("#memberListTable .admin-only").forEach(el => {
+                el.style.display = isAdmin ? "table-cell" : "none";
+            });
+        }
+
+        function openMemberModal(internalId = null) {
+            const form = document.getElementById('memberForm');
+            form.reset();
+            const memberIdInput = document.getElementById('memberId');
+            
+            if (internalId) {
+                const member = members.find(m => m.internalId === internalId);
+                if (!member) return;
+                
+                document.getElementById('memberModalTitle').innerHTML = '<i class="bi bi-person-check"></i> Editar Membro';
+                document.getElementById('editMemberInternalId').value = member.internalId;
+                memberIdInput.value = member.id;
+                memberIdInput.readOnly = true;
+                document.getElementById('memberName').value = member.name;
+                document.getElementById('memberStatus').value = member.status;
+            } else {
+                document.getElementById('memberModalTitle').innerHTML = '<i class="bi bi-person-plus"></i> Novo Membro';
+                document.getElementById('editMemberInternalId').value = '';
+                memberIdInput.readOnly = false;
+            }
+            modalInstances.memberModal.show();
+        }
+
+        async function handleMemberFormSubmit(e) {
+            e.preventDefault();
+            const internalId = document.getElementById('editMemberInternalId').value;
+            const memberId = document.getElementById('memberId').value;
+
+            if (!internalId && members.some(m => m.id === memberId)) {
+                showMessage("Erro", "Este ID/Matrícula já está em uso.", "danger");
+                return;
+            }
+
+            const memberData = {
+                id: memberId,
+                name: document.getElementById('memberName').value,
+                status: document.getElementById('memberStatus').value,
+            };
+
+            if (internalId) {
+                members = members.map(m => m.internalId === internalId ? { ...m, ...memberData, internalId: m.internalId } : m);
+            } else {
+                memberData.internalId = Date.now().toString();
+                members.push(memberData);
+            }
+            
+            await persistAndRefresh('Membro salvo com sucesso!');
+            modalInstances.memberModal.hide();
+        }
+
+        async function deleteMember(internalId) {
+            if (!isAdmin || !confirm('Excluir este membro? Esta ação não pode ser desfeita.')) return;
+            
+            if (transactions.some(t => t.memberId === internalId)) {
+                if (!confirm('Este membro possui transações associadas. As transações NÃO serão excluídas, mas ficarão sem membro. Deseja continuar?')) {
+                    return;
+                }
+                transactions = transactions.map(t => {
+                    if (t.memberId === internalId) t.memberId = "";
+                    return t;
+                });
+            }
+            
+            // Exclui também os registros de mensalidade
+            if (dues[internalId]) {
+                delete dues[internalId];
+            }
+
+            members = members.filter(m => m.internalId !== internalId);
+            await persistAndRefresh('Membro excluído.');
+        }
+
+        function importMembers() {
+            if (!isAdmin) return;
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".csv";
+            input.onchange = e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = async ev => {
+                    try {
+                        const csv = ev.target.result;
+                        const lines = csv.split(/\r\n|\n/);
+                        if (lines.length < 2) throw new Error("Arquivo CSV vazio ou inválido.");
+                        
+                        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+                        if (headers[0] !== 'id' || headers[1] !== 'nome' || headers[2] !== 'status') {
+                            throw new Error("Formato de CSV inválido. As colunas devem ser: ID, Nome, Status");
+                        }
+
+                        const newMembers = [];
+                        const validStatus = ['Regular', 'Afastado', 'Remido'];
+                        
+                        for (let i = 1; i < lines.length; i++) {
+                            if (!lines[i]) continue;
+                            const data = lines[i].split(',');
+                            
+                            if (data.length < 3) {
+                                showMessage("Aviso", `Linha ${i+1} incompleta. Pulando.`, 'warning');
+                                continue;
+                            }
+                            
+                            const status = data[2].trim();
+                            if (!validStatus.includes(status)) {
+                                showMessage("Aviso", `Status inválido '${status}' na linha ${i+1}. Pulando.`, 'warning');
+                                continue;
+                            }
+                            
+                            const id = data[0].trim();
+                            if (members.some(m => m.id === id) || newMembers.some(m => m.id === id)) {
+                                showMessage("Aviso", `ID duplicado '${id}' na linha ${i+1}. Pulando.`, 'warning');
+                                continue;
+                            }
+
+                            newMembers.push({
+                                id: id,
+                                name: data[1].trim(),
+                                status: status,
+                                internalId: Date.now().toString() + i
+                            });
+                        }
+                        
+                        if (newMembers.length === 0) throw new Error("Nenhum membro válido encontrado no arquivo.");
+
+                        members = [...members, ...newMembers];
+                        await persistAndRefresh(`${newMembers.length} membros importados com sucesso.`);
+
+                    } catch (err) {
+                        showMessage("Erro na Importação", err.message, "danger");
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        // *** NOVA FUNÇÃO DE EXPORTAR CSV ***
+        function exportMembersCSV() {
+            if (!isAdmin) return;
+            if (members.length === 0) {
+                showMessage("Aviso", "Não há membros para exportar.", "warning");
+                return;
+            }
+
+            const headers = '"ID","Nome","Status"';
+            let csvContent = headers + '\n'; // Add newline after header
+
+            // Sort members by name for a clean export
+            const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+
+            sortedMembers.forEach(m => {
+                // Escape double quotes inside a field by doubling them ""
+                const id = `"${m.id.replace(/"/g, '""')}"`;
+                const name = `"${m.name.replace(/"/g, '""')}"`;
+                const status = `"${m.status.replace(/"/g, '""')}"`;
+                
+                csvContent += [id, name, status].join(',') + '\n';
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `backup_membros_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a); // Required for Firefox
+            a.click();
+            document.body.removeChild(a); // Clean up
+            URL.revokeObjectURL(url);
+            showMessage("Sucesso", "Backup CSV de membros exportado.", "info");
+        }
+
+        // =============================================================================
+        // LÓGICA DE MENSALIDADES
+        // =============================================================================
+        function renderDuesManagement() {
+            const tab = document.getElementById('duesTab');
+            if (!tab || tab.style.display === 'none') return; // Não renderiza se a aba não estiver ativa
+
+            const tableBody = document.getElementById('duesTableBody');
+            const yearSelect = document.getElementById('duesYearFilter');
+            const duesValueDisplay = document.getElementById('duesValueDisplay');
+            const searchTerm = document.getElementById('duesMemberSearch').value.toLowerCase();
+
+            duesValueDisplay.textContent = formatCurrency(duesConfig.valor);
+
+            // Popula o seletor de ano (Ano atual, -1, +1)
+            if (yearSelect.options.length === 0) {
+                const currentYear = new Date().getFullYear();
+                [currentYear - 1, currentYear, currentYear + 1].forEach(y => {
+                    const option = new Option(y, y);
+                    yearSelect.add(option);
+                });
+                yearSelect.value = currentYear;
+            }
+            
+            const selectedYear = yearSelect.value;
+            tableBody.innerHTML = ''; // Limpa a tabela
+            
+            const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+            // Filtra membros com base na busca
+            const filteredMembers = sortedMembers.filter(m => {
+                return m.name.toLowerCase().includes(searchTerm) || m.id.toLowerCase().includes(searchTerm);
+            });
+
+            const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+            
+            if (filteredMembers.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="13" class="text-center text-muted">Nenhum membro encontrado.</td></tr>';
+            } else {
+                filteredMembers.forEach(m => {
+                    let rowHTML = `<td style="text-align: left; padding-left: 10px;">${m.name} <small class="text-muted d-block">${m.id}</small></td>`;
+                    
+                    months.forEach(month => {
+                        if (m.status === 'Remido') {
+                            rowHTML += `<td><span class="badge bg-info text-dark">Isento</span></td>`;
+                        } else {
+                            // Busca o status no objeto 'dues'
+                            const status = (dues[m.internalId] && dues[m.internalId][selectedYear] && dues[m.internalId][selectedYear][month])
+                                ? dues[m.internalId][selectedYear][month]
+                                : 'pendente';
+                            
+                            if (status === 'pago') {
+                                rowHTML += `<td><span class="badge bg-success">Pago</span></td>`;
+                            } else {
+                                rowHTML += `<td><button class="btn btn-danger btn-sm admin-only" onclick="payDues('${m.internalId}', '${selectedYear}', '${month}')">Dar Baixa</button></td>`;
+                            }
+                        }
+                    });
+                    tableBody.insertAdjacentHTML('beforeend', `<tr>${rowHTML}</tr>`);
+                });
+            }
+
+            // Re-aplica visibilidade de admin para os botões recém-criados
+            document.querySelectorAll("#duesTableBody .admin-only").forEach(el => {
+                el.style.display = isAdmin ? "inline-block" : "none";
+            });
+        }
+
+        async function payDues(memberId, year, month) {
+            const member = members.find(m => m.internalId === memberId);
+            if (!member) return;
+
+            if (!confirm(`Confirmar pagamento de ${formatCurrency(duesConfig.valor)} para ${member.name} (mês ${month}/${year})?`)) return;
+
+            // 1. Atualiza o objeto 'dues'
+            if (!dues[memberId]) dues[memberId] = {};
+            if (!dues[memberId][year]) dues[memberId][year] = {};
+            dues[memberId][year][month] = 'pago';
+
+            // 2. Cria a transação correspondente
+            const newTransaction = {
+                id: Date.now().toString(),
+                description: `Mensalidade ${month}/${year} - ${member.name}`,
+                amount: parseFloat(duesConfig.valor),
+                date: new Date().toISOString().split('T')[0], // Data do pagamento é hoje
+                type: 'entrada',
+                category: 'Mensalidades',
+                fundo: 'tesouraria', // Mensalidade é sempre tesouraria
+                memberId: memberId,
+                createdBy: adminName
+            };
+            transactions.push(newTransaction);
+
+            // 3. Salva e atualiza a UI
+            await persistAndRefresh('Baixa de mensalidade registrada com sucesso!');
+        }
+
+        function openDuesConfigModal() {
+            document.getElementById('duesValue').value = duesConfig.valor;
+            modalInstances.duesConfigModal.show();
+        }
+        
+        async function handleDuesConfigSubmit(e) {
+            e.preventDefault();
+            const newValue = parseFloat(document.getElementById('duesValue').value);
+            if (isNaN(newValue) || newValue < 0) {
+                showMessage("Erro", "Valor inválido.", "danger");
+                return;
+            }
+            duesConfig.valor = newValue;
+            await persistAndRefresh("Valor da mensalidade atualizado.");
+            modalInstances.duesConfigModal.hide();
+        }
+
+        // =============================================================================
+        // DASHBOARD E GRÁFICOS
+        // =============================================================================
+        function updateDashboard() {
+            // Tesouraria
+            const totalIncomeT = transactions.reduce((sum, t) => (t.type === 'entrada' && t.fundo === 'tesouraria') ? sum + t.amount : sum, 0);
+            const totalOutcomeT = transactions.reduce((sum, t) => (t.type === 'saida' && t.fundo === 'tesouraria') ? sum + t.amount : sum, 0);
+            const balanceT = totalIncomeT - totalOutcomeT;
+
+            // Hospitalaria
+            const totalIncomeH = transactions.reduce((sum, t) => (t.type === 'entrada' && t.fundo === 'hospitalaria') ? sum + t.amount : sum, 0);
+            const totalOutcomeH = transactions.reduce((sum, t) => (t.type === 'saida' && t.fundo === 'hospitalaria') ? sum + t.amount : sum, 0);
+            const balanceH = totalIncomeH - totalOutcomeH;
+            
+            // Mês (Consolidado)
+            const currentMonthStr = (new Date).toISOString().substring(0, 7);
+            const monthIncome = transactions.reduce((sum, t) => (t.type === 'entrada' && t.date.startsWith(currentMonthStr)) ? sum + t.amount : sum, 0);
+            const monthOutcome = transactions.reduce((sum, t) => (t.type === 'saida' && t.date.startsWith(currentMonthStr)) ? sum + t.amount : sum, 0);
+
+            // Update DOM
+            document.getElementById("balanceTesouraria").textContent = formatCurrency(balanceT);
+            document.getElementById("balanceHospitalaria").textContent = formatCurrency(balanceH);
+            document.getElementById("monthIncome").textContent = formatCurrency(monthIncome);
+            document.getElementById("monthOutcome").textContent = formatCurrency(monthOutcome);
+        }
+
+        function renderCategoryChart() {
+            const ctx = document.getElementById("categoryChart").getContext("2d"),
+                month = document.getElementById("monthFilter").value,
+                expenses = transactions.filter(t => "saida" === t.type && ("all" === month || t.date.startsWith(month))),
+                categoryTotals = expenses.reduce((acc, t) => (acc[t.category] = (acc[t.category] || 0) + t.amount, acc), {}),
+                labels = Object.keys(categoryTotals),
+                data = Object.values(categoryTotals);
+            charts.category && charts.category.destroy(), charts.category = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: "Total de Despesas",
+                        data: data,
+                        backgroundColor: "rgba(220, 53, 69, 0.6)",
+                        borderColor: "rgba(220, 53, 69, 1)",
+                        borderWidth: 1
+                    }]
+                },
+                options: { responsive: !0, plugins: { legend: { display: !1 } }, scales: { y: { beginAtZero: !0 } } }
+            })
+        }
+
+        function renderIncomeVsExpenseChart() {
+            const ctx = document.getElementById('incomeVsExpenseChart').getContext('2d');
+            
+            const monthlyData = transactions.reduce((acc, t) => {
+                const month = t.date.substring(0, 7);
+                if (!acc[month]) acc[month] = { income: 0, expense: 0 };
+                if (t.type === 'entrada') acc[month].income += t.amount;
+                else acc[month].expense += t.amount;
+                return acc;
+            }, {});
+
+            const sortedMonths = Object.keys(monthlyData).sort();
+            const labels = sortedMonths.map(m => { const [year, month] = m.split('-'); return `${month}/${year}`; });
+            const incomeData = sortedMonths.map(m => monthlyData[m].income);
+            const expenseData = sortedMonths.map(m => monthlyData[m].expense);
+
+            if (charts.incomeExpense) charts.incomeExpense.destroy();
+
+            charts.incomeExpense = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Entradas', data: incomeData, borderColor: 'rgba(25, 135, 84, 1)', backgroundColor: 'rgba(25, 135, 84, 0.5)', fill: true, tension: 0.1 },
+                        { label: 'Saídas', data: expenseData, borderColor: 'rgba(220, 53, 69, 1)', backgroundColor: 'rgba(220, 53, 69, 0.5)', fill: true, tension: 0.1 }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+        }
+        
+        // =============================================================================
+        // RELATÓRIOS
+        // =============================================================================
+        function generateReport() {
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate = document.getElementById('reportEndDate').value;
+            if (!startDate || !endDate) {
+                showMessage('Erro', 'Por favor, selecione as datas de início e fim.', 'danger');
+                return;
+            }
+
+            const reportTransactions = transactions.filter(t => t.date >= startDate && t.date <= endDate);
+            reportTransactions.sort((a,b) => new Date(a.date) - new Date(b.date));
+            
+            // Calcula saldos para Tesouraria
+            const incomeT = reportTransactions.reduce((sum, t) => (t.type === 'entrada' && t.fundo === 'tesouraria') ? sum + t.amount : sum, 0);
+            const outcomeT = reportTransactions.reduce((sum, t) => (t.type === 'saida' && t.fundo === 'tesouraria') ? sum + t.amount : sum, 0);
+            const balanceT = incomeT - outcomeT;
+            
+            // Calcula saldos para Hospitalaria
+            const incomeH = reportTransactions.reduce((sum, t) => (t.type === 'entrada' && t.fundo === 'hospitalaria') ? sum + t.amount : sum, 0);
+            const outcomeH = reportTransactions.reduce((sum, t) => (t.type === 'saida' && t.fundo === 'hospitalaria') ? sum + t.amount : sum, 0);
+            const balanceH = incomeH - outcomeH;
+
+            let reportHTML = `
+                <h4>Relatório de ${formatDate(startDate)} a ${formatDate(endDate)}</h4>
+                <hr>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h5>Fundo de Tesouraria</h5>
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">Entradas: <span class="badge bg-success rounded-pill">${formatCurrency(incomeT)}</span></li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">Saídas: <span class="badge bg-danger rounded-pill">${formatCurrency(outcomeT)}</span></li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center"><strong>Saldo do Período:</strong> <span class="badge bg-primary rounded-pill">${formatCurrency(balanceT)}</span></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Fundo de Hospitalaria</h5>
+                        <ul class="list-group">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">Entradas: <span class="badge bg-success rounded-pill">${formatCurrency(incomeH)}</span></li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">Saídas: <span class="badge bg-danger rounded-pill">${formatCurrency(outcomeH)}</span></li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center"><strong>Saldo do Período:</strong> <span class="badge bg-info rounded-pill">${formatCurrency(balanceH)}</span></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h5 class="mt-4">Detalhes das Transações (${reportTransactions.length})</h5>
+                <table class="table table-sm table-striped table-hover">
+                    <thead><tr><th>Data</th><th>Descrição</th><th>Membro</th><th>Fundo</th><th>Categoria</th><th>Tipo</th><th class="text-end">Valor</th></tr></thead>
+                    <tbody>`;
+            
+            if (reportTransactions.length > 0) {
+                reportTransactions.forEach(t => {
+                    const member = members.find(m => m.internalId === t.memberId);
+                    const memberName = member ? member.name : '-';
+                    
+                    reportHTML += `
+                        <tr>
+                            <td>${formatDate(t.date)}</td>
+                            <td>${t.description}</td>
+                            <td>${memberName}</td>
+                            <td>${t.fundo}</td>
+                            <td>${t.category}</td>
+                            <td><span class="text-${t.type === 'entrada' ? 'success' : 'danger'}">${t.type}</span></td>
+                            <td class="text-end fw-bold text-${t.type === 'entrada' ? 'success' : 'danger'}">${formatCurrency(t.amount)}</td>
+                        </tr>`;
+                });
+            } else {
+                reportHTML += '<tr><td colspan="7" class="text-center">Nenhuma transação no período selecionado.</td></tr>';
+            }
+
+            reportHTML += `</tbody></table>`;
+            document.getElementById('reportPrintArea').innerHTML = reportHTML;
+            modalInstances.reportConfigModal.hide();
+            modalInstances.reportModal.show();
+        }
+
+        function printReport() {
+            const reportContent = document.getElementById('reportPrintArea').innerHTML;
+            const originalPage = document.body.innerHTML;
+            
+            document.body.innerHTML = `<div class="container-fluid p-4">${reportContent}</div>`;
+            window.print();
+            document.body.innerHTML = originalPage;
+            location.reload();
+        }
+        
+        // =============================================================================
+        // FUNÇÕES DE UTILIDADE
+        // =============================================================================
+        function formatCurrency(v) { return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+        function formatDate(d) { if(!d) return ''; const [y, m, day] = d.split('-'); return `${day}/${m}/${y}`; }
+        
+        function updateCategoryOptions(formPrefix, type) {
+            const selectedType = type || document.querySelector(`input[name="${formPrefix === 'add' ? 'type' : 'editType'}"]:checked`).value;
+            const categorySelect = document.getElementById(formPrefix === 'add' ? 'category' : 'editCategory');
+            
+            let categories = (selectedType === 'entrada') ? incomeCategories : expenseCategories;
+            
+            // Remove "Mensalidades" APENAS do modal "Adicionar"
+            if (formPrefix === 'add' && selectedType === 'entrada') {
+                categories = categories.filter(cat => cat !== 'Mensalidades');
+            }
+            
+            categorySelect.innerHTML = '';
+            categories.forEach(cat => {
+                const option = new Option(cat, cat);
+                categorySelect.add(option);
+            });
+        }
+
+        function populateMemberSearchList() {
+            const datalistAdd = document.getElementById('memberDatalist');
+            const datalistEdit = document.getElementById('memberDatalistEdit');
+            if (!datalistAdd || !datalistEdit) return;
+
+            const sortedMembers = [...members].sort((a, b) => a.name.localeCompare(b.name));
+            
+            datalistAdd.innerHTML = '';
+            datalistEdit.innerHTML = '';
+            
+            sortedMembers.forEach(m => {
+                const option = document.createElement('option');
+                option.value = `${m.name} (${m.id})`;
+                datalistAdd.appendChild(option);
+                datalistEdit.appendChild(option.cloneNode(true)); // Clona para a outra lista
+            });
+        }
+        
+        function populateFilters() {
+            const months = [...new Set(transactions.map(t => t.date.substring(0, 7)))].sort().reverse(),
+                categories = [...new Set(transactions.map(t => t.category))].sort(),
+                monthFilter = document.getElementById("monthFilter"),
+                selectedMonth = monthFilter.value;
+            monthFilter.innerHTML = '<option value="all">Todos os Meses</option>', months.forEach(m => {
+                const [year, month] = m.split("-"),
+                    option = new Option(`${month}/${year}`, m, !1, m === selectedMonth);
+                monthFilter.add(option)
+            });
+            const categoryFilter = document.getElementById("categoryFilter"),
+                selectedCategory = categoryFilter.value;
+            categoryFilter.innerHTML = '<option value="all">Todas as Categorias</option>', categories.forEach(c => {
+                const option = new Option(c, c, !1, c === selectedCategory);
+                categoryFilter.add(option)
+            })
+        }
+
+        function showMessage(title, text, type = "success") {
+            const t = document.getElementById("messageToast"),
+                h = document.getElementById("toastTitle"),
+                b = document.getElementById("toastBody");
+            h.textContent = title, b.textContent = text, t.className = `toast bg-${type} text-white`, (new bootstrap.Toast(t)).show()
+        }
+
+        // =============================================================================
+        // API (JSONBIN.IO) E PERSISTÊNCIA
+        // =============================================================================
+
+        // Função unificada para salvar e atualizar a UI
+        async function persistAndRefresh(successMessage) {
+            try {
+                // Salva o objeto completo
+                await saveCloudData({ transactions, members, dues, duesConfig }); 
+                if (successMessage) showMessage('Sucesso!', successMessage, 'success');
+            } catch (error) {
+                showMessage('Erro', `Não foi possível salvar: ${error.message}`, 'danger');
+            } finally {
+                renderUI(); // Renderiza tudo
+            }
+        }
+
+        async function fetchCloudData() {
+            const statusEl = document.getElementById("syncStatus");
+            statusEl.className = "badge bg-warning", statusEl.title = "Buscando dados...";
+            
+            if (FIXED_API_KEY === "SUA_API_KEY_AQUI" || FIXED_BIN_ID === "SEU_BIN_ID_AQUI") {
+                showMessage("Configuração Necessária", "Edite o HTML e insira sua API Key e BIN ID do JSONBin.io.", "danger");
+                statusEl.className = "badge bg-danger", statusEl.title = "Erro de configuração";
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.jsonbin.io/v3/b/${FIXED_BIN_ID}/latest`, {
+                    headers: { "X-Master-Key": FIXED_API_KEY }
+                });
+                if (!response.ok) throw new Error("Falha ao buscar dados da nuvem.");
+                const result = await response.json();
+                
+                // Carrega todos os dados
+                transactions = result.record.transactions || [];
+                members = result.record.members || [];
+                dues = result.record.dues || {};
+                duesConfig = result.record.duesConfig || { valor: 100.00 };
+
+                // Back-fill 'fundo' para transações antigas (em memória, será salvo na próxima atualização)
+                transactions = transactions.map(t => {
+                    if (!t.fundo) {
+                        t.fundo = getFundoFromCategory(t.category);
+                    }
+                    return t;
+                });
+                
+                statusEl.className = "badge bg-success", statusEl.title = "Conectado"
+            } catch (error) {
+                showMessage("Erro de Conexão", error.message, "danger"), statusEl.className = "badge bg-danger", statusEl.title = "Erro de conexão"
+            } finally {
+                renderUI()
+            }
+        }
+
+        async function saveCloudData(dataToSave) {
+            const statusEl = document.getElementById("syncStatus");
+            statusEl.className = "badge bg-warning", statusEl.title = "Salvando na nuvem...";
+            const response = await fetch(`https://api.jsonbin.io/v3/b/${FIXED_BIN_ID}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", "X-Master-Key": FIXED_API_KEY },
+                body: JSON.stringify(dataToSave) // Salva o objeto completo
+            });
+            if (!response.ok) throw statusEl.className = "badge bg-danger", statusEl.title = "Erro ao salvar", new Error("Falha ao enviar dados para a nuvem.");
+            statusEl.className = "badge bg-success", statusEl.title = "Dados salvos"
+        }
+
+        async function clearCloudData() {
+            if (isAdmin && confirm("ATENÇÃO: Isso apagará TODOS os dados (transações, membros e mensalidades) da nuvem. Continuar?")) {
+                transactions = [];
+                members = [];
+                dues = {};
+                duesConfig = { valor: 100.00 };
+                await persistAndRefresh("Dados da nuvem foram limpos.");
+            }
+        }
+
+        function exportBackup() {
+            if (!isAdmin) return;
+            const data = JSON.stringify({ transactions, members, dues, duesConfig }, null, 2);
+            const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `backup_financas_maconico_${(new Date).toISOString().split("T")[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showMessage("Sucesso", "Backup local exportado.", "info");
+        }
+        
+        async function importFromJSON() {
+            if (!isAdmin) return;
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".json";
+            input.onchange = e => {
+                const reader = new FileReader();
+                reader.onload = async ev => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        if (!Array.isArray(data.transactions) || !Array.isArray(data.members)) throw new Error("Formato de arquivo inválido. 'transactions' ou 'members' não encontrados.");
+                        
+                        transactions = data.transactions;
+                        members = data.members;
+                        dues = data.dues || {};
+                        duesConfig = data.duesConfig || { valor: 100.00 };
+
+                        await persistAndRefresh("Backup importado e salvo na nuvem.");
+
+                    } catch (err) {
+                        showMessage("Erro na Importação", err.message, "danger");
+                    }
+                };
+                reader.readAsText(e.target.files[0]);
+            };
+            input.click();
+        }
+
+        // =============================================================================
+        // EXPOR FUNÇÕES PARA O ESCOPO GLOBAL (HTML)
+        // =============================================================================
+        Object.assign(window, {
+            handleAdminLogin, logoutAdmin, deleteTransaction, clearCloudData, exportBackup, importFromJSON,
+            openEditModal, openViewModal, generateReport, printReport, showTab,
+            openMemberModal, deleteMember, importMembers, exportMembersCSV, // <-- exportMembersCSV adicionado aqui
+            payDues, openDuesConfigModal, renderDuesManagement
+        });
+
+    </script>
+</body>
+</html>
